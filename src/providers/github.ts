@@ -1,18 +1,12 @@
-import { Buffer } from "node:buffer";
 import type { JsonObject, Provider, ProviderStatus, ProviderTool } from "../types.js";
-
-const REQUEST_ID = /^[A-Za-z0-9._:-]{1,120}$/;
 
 export interface GitHubProviderConfig {
   token?: string;
   repositories: string[];
-  controlRepository: string;
-  controlBranch: string;
-  controlPath: string;
 }
 
 export function parseRepositoryAllowlist(value: string | undefined): string[] {
-  const repositories = (value ?? "Tariq990/recepio-app-v2")
+  const repositories = (value ?? "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
@@ -24,11 +18,7 @@ export class GitHubProvider implements Provider {
   readonly name = "GitHub";
   readonly kind = "rest" as const;
 
-  constructor(private readonly config: GitHubProviderConfig) {
-    if (!config.repositories.includes(config.controlRepository)) {
-      throw new Error("controlRepository must be present in the GitHub repository allowlist");
-    }
-  }
+  constructor(private readonly config: GitHubProviderConfig) {}
 
   private assertRepo(repository: string): void {
     if (!this.config.repositories.includes(repository)) {
@@ -44,7 +34,7 @@ export class GitHubProvider implements Provider {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${this.config.token}`,
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "recepio-mcp/0.1",
+        "User-Agent": "unified-mcp-gateway/0.1",
         ...(init.headers ?? {}),
       },
       signal: AbortSignal.timeout(20_000),
@@ -58,14 +48,16 @@ export class GitHubProvider implements Provider {
   }
 
   async status(): Promise<ProviderStatus> {
-    if (!this.config.token) {
+    if (!this.config.token || this.config.repositories.length === 0) {
       return {
         providerId: this.id,
         name: this.name,
         kind: this.kind,
         configured: false,
         reachable: false,
-        detail: "RECEPIO_MCP_GITHUB_TOKEN is not set",
+        detail: !this.config.token
+          ? "UNIFIED_MCP_GITHUB_TOKEN is not set"
+          : "UNIFIED_MCP_GITHUB_REPOSITORIES is empty",
       };
     }
     try {
@@ -144,21 +136,6 @@ export class GitHubProvider implements Provider {
         risk: "READ",
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
       },
-      {
-        id: "github.recepio.dispatch_smoke",
-        providerId: this.id,
-        nativeName: "recepio.dispatch_smoke",
-        title: "Dispatch Recepio MCP smoke",
-        description: "Write the fixed Recepio control request that triggers the allowlisted MCP smoke workflow.",
-        inputSchema: {
-          type: "object",
-          properties: { request_id: { type: "string", minLength: 1, maxLength: 120 } },
-          required: ["request_id"],
-          additionalProperties: false,
-        },
-        risk: "WRITE",
-        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
-      },
     ];
   }
 
@@ -188,31 +165,6 @@ export class GitHubProvider implements Provider {
       const query = new URLSearchParams({ per_page: String(perPage) });
       if (args.branch) query.set("branch", String(args.branch));
       return this.api(`repos/${repository}/actions${workflow}/runs?${query}`);
-    }
-
-    if (tool.nativeName === "recepio.dispatch_smoke") {
-      const requestId = String(args.request_id ?? "");
-      if (!REQUEST_ID.test(requestId)) throw new Error("invalid request_id");
-      const repository = this.config.controlRepository;
-      this.assertRepo(repository);
-      const current = (await this.api(
-        `repos/${repository}/contents/${this.config.controlPath}?ref=${encodeURIComponent(this.config.controlBranch)}`,
-      )) as { sha?: string };
-      if (!current.sha) throw new Error("control request file has no blob SHA");
-      const content = Buffer.from(
-        `${JSON.stringify({ action: "dispatch_smoke", request_id: requestId }, null, 2)}\n`,
-        "utf8",
-      ).toString("base64");
-      return this.api(`repos/${repository}/contents/${this.config.controlPath}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `ops(mcp): dispatch smoke ${requestId}`,
-          branch: this.config.controlBranch,
-          sha: current.sha,
-          content,
-        }),
-      });
     }
 
     throw new Error(`unsupported GitHub tool: ${tool.id}`);
