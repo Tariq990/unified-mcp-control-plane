@@ -1,0 +1,38 @@
+[Unit]
+Description=Unified MCP Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=unified-mcp
+Group=unified-mcp
+WorkingDirectory=/opt/unified-mcp-gateway/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/unified-mcp-gateway.env
+ExecStart=/usr/bin/node dist/src/server.js
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+UMask=0077
+
+# The process needs outbound HTTPS, read-only release files,
+# and write access only to its OAuth state directory.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/unified-mcp-gateway
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
