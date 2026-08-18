@@ -1,0 +1,17 @@
+{
+  "name": "unified-mcp-gateway-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "0.8.3"
+  },
+  "devDependencies": {
+    "wrangler": "4.118.0"
+  }
+}
