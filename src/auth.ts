@@ -3,7 +3,7 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname } from "node:path";
 
-export const OAUTH_SCOPES = ["recepio:read", "recepio:write"] as const;
+export const OAUTH_SCOPES = ["gateway:read", "gateway:write"] as const;
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
@@ -48,7 +48,7 @@ let stateLoad: Promise<PersistedState> | undefined;
 let persistQueue = Promise.resolve();
 
 export function oauthEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.RECEPIO_MCP_OAUTH_ENABLED === "1";
+  return env.UNIFIED_MCP_OAUTH_ENABLED === "1";
 }
 
 function requiredEnv(name: string): string {
@@ -58,7 +58,7 @@ function requiredEnv(name: string): string {
 }
 
 function baseUrl(): string {
-  return (process.env.RECEPIO_MCP_BASE_URL || "https://mcp.recepio.io").replace(/\/$/, "");
+  return requiredEnv("UNIFIED_MCP_BASE_URL").replace(/\/$/, "");
 }
 
 export function resourceUrl(): string {
@@ -66,7 +66,7 @@ export function resourceUrl(): string {
 }
 
 function stateFile(): string {
-  return process.env.RECEPIO_MCP_STATE_FILE || "/var/lib/recepio-mcp/oauth-state.json";
+  return process.env.UNIFIED_MCP_STATE_FILE || "/var/lib/unified-mcp-gateway/oauth-state.json";
 }
 
 function nowSeconds(): number {
@@ -90,15 +90,15 @@ function hashSecret(value: string): Buffer {
 }
 
 function secretMatches(received: string): boolean {
-  const expected = hashSecret(requiredEnv("RECEPIO_MCP_ADMIN_SECRET"));
+  const expected = hashSecret(requiredEnv("UNIFIED_MCP_ADMIN_SECRET"));
   const actual = hashSecret(received);
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function jwtSecret(): Buffer {
-  const value = requiredEnv("RECEPIO_MCP_JWT_SECRET");
+  const value = requiredEnv("UNIFIED_MCP_JWT_SECRET");
   if (Buffer.byteLength(value, "utf8") < 32) {
-    throw new Error("RECEPIO_MCP_JWT_SECRET must be at least 32 bytes");
+    throw new Error("UNIFIED_MCP_JWT_SECRET must be at least 32 bytes");
   }
   return Buffer.from(value, "utf8");
 }
@@ -111,7 +111,7 @@ function signAccessToken(clientId: string, scopes: string[], resource: string): 
     JSON.stringify({
       iss: baseUrl(),
       aud: resource,
-      sub: "recepio-admin",
+      sub: "unified-mcp-admin",
       client_id: clientId,
       scope: scopes.join(" "),
       iat: issuedAt,
@@ -148,7 +148,7 @@ export function verifyAccessToken(token: string): AccessTokenInfo | null {
     if (
       claims.iss !== baseUrl() ||
       claims.aud !== resourceUrl() ||
-      claims.sub !== "recepio-admin" ||
+      claims.sub !== "unified-mcp-admin" ||
       !claims.client_id ||
       !claims.exp ||
       claims.exp <= nowSeconds()
@@ -156,7 +156,7 @@ export function verifyAccessToken(token: string): AccessTokenInfo | null {
       return null;
     }
     const scopes = (claims.scope || "").split(/\s+/).filter(Boolean);
-    if (!scopes.includes("recepio:read")) return null;
+    if (!scopes.includes("gateway:read")) return null;
     return { clientId: claims.client_id, scopes, expiresAt: claims.exp };
   } catch {
     return null;
@@ -199,14 +199,14 @@ export function redirectUriAllowed(uri: string, env: NodeJS.ProcessEnv = process
   try {
     const url = new URL(uri);
     if (url.protocol !== "https:") return false;
-    const configuredHosts = (env.RECEPIO_MCP_OAUTH_REDIRECT_HOSTS || "chatgpt.com")
+    const configuredHosts = (env.UNIFIED_MCP_OAUTH_REDIRECT_HOSTS || "chatgpt.com")
       .split(",")
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean);
     const host = url.hostname.toLowerCase();
     if (!configuredHosts.includes(host)) return false;
     if (host === "chatgpt.com" && /^\/connector\/oauth\/[A-Za-z0-9_-]+$/.test(url.pathname)) return true;
-    if (env.RECEPIO_MCP_OAUTH_ALLOW_LEGACY_REDIRECT === "1" && url.pathname === "/connector_platform_oauth_redirect") {
+    if (env.UNIFIED_MCP_OAUTH_ALLOW_LEGACY_REDIRECT === "1" && url.pathname === "/connector_platform_oauth_redirect") {
       return true;
     }
     return false;
@@ -217,10 +217,10 @@ export function redirectUriAllowed(uri: string, env: NodeJS.ProcessEnv = process
 
 function normalizeScopes(scope: string | null | undefined): string[] {
   const requested = (scope || "").split(/\s+/).filter(Boolean);
-  const effective = requested.length ? requested : ["recepio:read", "offline_access"];
+  const effective = requested.length ? requested : ["gateway:read", "offline_access"];
   const allowed = new Set<string>([...OAUTH_SCOPES, "offline_access"]);
   if (effective.some((value) => !allowed.has(value))) throw new Error("invalid_scope");
-  if (!effective.includes("recepio:read")) effective.push("recepio:read");
+  if (!effective.includes("gateway:read")) effective.push("gateway:read");
   return [...new Set(effective)];
 }
 
@@ -281,7 +281,7 @@ async function registerClient(req: IncomingMessage, res: ServerResponse): Promis
     return;
   }
   const state = await loadState();
-  const clientId = `recepio_${encodeBase64Url(randomBytes(24))}`;
+  const clientId = `umcp_${encodeBase64Url(randomBytes(24))}`;
   const record: ClientRecord = {
     clientId,
     ...(body.client_name ? { clientName: body.client_name.slice(0, 120) } : {}),
@@ -307,7 +307,7 @@ function authorizeForm(params: URLSearchParams, errorMessage?: string): string {
   ].map((name) => `<input type="hidden" name="${name}" value="${htmlEscape(params.get(name) || "")}">`).join("\n");
   const scopes = normalizeScopes(params.get("scope")).filter((scope) => scope !== "offline_access");
   const error = errorMessage ? `<p class="error">${htmlEscape(errorMessage)}</p>` : "";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Recepio MCP</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f6f8fb;color:#10233a;margin:0;display:grid;place-items:center;min-height:100vh}.card{width:min(520px,calc(100% - 32px));background:#fff;border:1px solid #dde5ee;border-radius:18px;padding:28px;box-shadow:0 16px 48px rgba(16,35,58,.08)}h1{margin:0 0 8px;font-size:24px}p{line-height:1.5}.scopes{background:#f6f8fb;border-radius:12px;padding:14px 18px}.scopes li{margin:6px 0}label{display:block;font-weight:600;margin:18px 0 8px}input[type=password]{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b7c5d5;border-radius:10px;font:inherit}button{width:100%;margin-top:16px;border:0;border-radius:10px;padding:12px 16px;background:#123d68;color:white;font:inherit;font-weight:700;cursor:pointer}.error{color:#a21919;font-weight:600}.muted{color:#587087;font-size:14px}</style></head><body><main class="card"><h1>Authorize Recepio MCP</h1><p>ChatGPT is requesting access to your private Recepio control plane.</p>${error}<ul class="scopes">${scopes.map((scope) => `<li>${htmlEscape(scope)}</li>`).join("")}</ul><form method="post" action="/authorize">${hidden}<label for="access_secret">Recepio MCP passphrase</label><input id="access_secret" name="access_secret" type="password" autocomplete="current-password" required><button type="submit">Authorize ChatGPT</button></form><p class="muted">Provider credentials remain server-side and are never sent to ChatGPT.</p></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Unified MCP Gateway</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f6f8fb;color:#10233a;margin:0;display:grid;place-items:center;min-height:100vh}.card{width:min(520px,calc(100% - 32px));background:#fff;border:1px solid #dde5ee;border-radius:18px;padding:28px;box-shadow:0 16px 48px rgba(16,35,58,.08)}h1{margin:0 0 8px;font-size:24px}p{line-height:1.5}.scopes{background:#f6f8fb;border-radius:12px;padding:14px 18px}.scopes li{margin:6px 0}label{display:block;font-weight:600;margin:18px 0 8px}input[type=password]{box-sizing:border-box;width:100%;padding:12px;border:1px solid #b7c5d5;border-radius:10px;font:inherit}button{width:100%;margin-top:16px;border:0;border-radius:10px;padding:12px 16px;background:#123d68;color:white;font:inherit;font-weight:700;cursor:pointer}.error{color:#a21919;font-weight:600}.muted{color:#587087;font-size:14px}</style></head><body><main class="card"><h1>Authorize Unified MCP Gateway</h1><p>ChatGPT is requesting access to your private MCP control plane.</p>${error}<ul class="scopes">${scopes.map((scope) => `<li>${htmlEscape(scope)}</li>`).join("")}</ul><form method="post" action="/authorize">${hidden}<label for="access_secret">Gateway passphrase</label><input id="access_secret" name="access_secret" type="password" autocomplete="current-password" required><button type="submit">Authorize ChatGPT</button></form><p class="muted">Provider credentials remain server-side and are never sent to ChatGPT.</p></main></body></html>`;
 }
 
 async function validateAuthorizationParams(params: URLSearchParams): Promise<{ client: ClientRecord; scopes: string[] }> {
@@ -448,7 +448,7 @@ export function oauthResourceMetadataUrl(): string {
 }
 
 export function oauthChallenge(): string {
-  return `Bearer resource_metadata="${oauthResourceMetadataUrl()}", scope="recepio:read"`;
+  return `Bearer resource_metadata="${oauthResourceMetadataUrl()}", scope="gateway:read"`;
 }
 
 export async function handleOAuthRoute(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
