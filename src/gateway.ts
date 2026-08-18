@@ -3,7 +3,7 @@ import { ProviderCatalog } from "./catalog.js";
 import { assertExpectedRisk, assertRiskAllowed, type PolicyConfig } from "./policy.js";
 import type { JsonObject, Provider, RiskClass } from "./types.js";
 
-export class RecepioGateway {
+export class UnifiedMcpGateway {
   readonly catalog: ProviderCatalog;
   readonly audit: AuditLog;
 
