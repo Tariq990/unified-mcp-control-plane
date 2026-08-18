@@ -13,12 +13,12 @@ import {
   type AccessTokenInfo,
 } from "./auth.js";
 import { providersFromEnv } from "./config.js";
-import { RecepioGateway } from "./gateway.js";
+import { UnifiedMcpGateway } from "./gateway.js";
 import { policyFromEnv } from "./policy.js";
 import type { RiskClass } from "./types.js";
 
 const RISK = z.enum(["READ", "WRITE", "HIGH_RISK", "DESTRUCTIVE", "PRODUCTION"]);
-const gateway = new RecepioGateway(providersFromEnv(), policyFromEnv());
+const gateway = new UnifiedMcpGateway(providersFromEnv(), policyFromEnv());
 
 function result(value: unknown, message: string) {
   return {
@@ -27,31 +27,31 @@ function result(value: unknown, message: string) {
   };
 }
 
-function createRecepioServer(auth: AccessTokenInfo | null, privateClient = false): McpServer {
+function createUnifiedServer(auth: AccessTokenInfo | null, privateClient = false): McpServer {
   const server = new McpServer(
-    { name: "recepio-mcp", version: "0.1.0" },
+    { name: "unified-mcp-gateway", version: "0.1.0" },
     {
       instructions:
-        "Recepio MCP is a guarded control plane. Search/describe tools before execution. For any non-READ tool, call tool_describe first and pass the exact returned risk as expected_risk. Server-side OAuth scopes and policy gates remain authoritative.",
+        "Unified MCP Gateway is a guarded control plane. Search and describe tools before execution. For any non-READ tool, call tool_describe first and pass the exact returned risk as expected_risk. Server-side OAuth scopes and policy gates remain authoritative.",
     },
   );
 
   server.registerTool(
     "providers_list",
     {
-      title: "List Recepio MCP providers",
+      title: "List MCP providers",
       description: "Use this when the user wants to see which provider integrations are configured and reachable.",
       inputSchema: {},
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },
-    async () => result(await gateway.providersList(), "Listed Recepio MCP providers."),
+    async () => result(await gateway.providersList(), "Listed MCP providers."),
   );
 
   server.registerTool(
     "provider_status",
     {
       title: "Check provider status",
-      description: "Use this when the user wants the current configuration and reachability status of one Recepio MCP provider.",
+      description: "Use this when the user wants the current configuration and reachability status of one provider.",
       inputSchema: { provider_id: z.string().min(1) },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
     },
@@ -87,7 +87,7 @@ function createRecepioServer(auth: AccessTokenInfo | null, privateClient = false
     "tool_execute",
     {
       title: "Execute provider tool",
-      description: "Use this only after selecting and describing a provider tool. Non-read operations require recepio:write, expected_risk to exactly match the server-side risk class, and the corresponding policy gate to be enabled.",
+      description: "Use this only after selecting and describing a provider tool. Non-read operations require gateway:write, expected_risk to exactly match the server-side risk class, and the corresponding policy gate to be enabled.",
       inputSchema: {
         tool_id: z.string().min(1),
         arguments: z.record(z.unknown()).default({}),
@@ -97,8 +97,8 @@ function createRecepioServer(auth: AccessTokenInfo | null, privateClient = false
     },
     async ({ tool_id, arguments: args, expected_risk }) => {
       const child = await gateway.catalog.describe(tool_id);
-      if (child.risk !== "READ" && !privateClient && !hasScope(auth, "recepio:write")) {
-        throw new Error("OAuth scope recepio:write is required for non-read provider tools");
+      if (child.risk !== "READ" && !privateClient && !hasScope(auth, "gateway:write")) {
+        throw new Error("OAuth scope gateway:write is required for non-read provider tools");
       }
       return result(
         await gateway.toolExecute(tool_id, args, expected_risk as RiskClass | undefined),
@@ -134,13 +134,13 @@ function isLoopbackHostHeader(hostHeader: string | undefined): boolean {
 const port = Number(process.env.PORT ?? 8788);
 const host = process.env.HOST ?? "127.0.0.1";
 const MCP_PATH = "/mcp";
-const bearerToken = process.env.RECEPIO_MCP_HTTP_BEARER_TOKEN;
-const devNoAuth = process.env.RECEPIO_MCP_DEV_NOAUTH === "1";
+const bearerToken = process.env.UNIFIED_MCP_HTTP_BEARER_TOKEN;
+const devNoAuth = process.env.UNIFIED_MCP_DEV_NOAUTH === "1";
 const oauthOn = oauthEnabled();
 
 if (!oauthOn && !bearerToken && !devNoAuth) {
   throw new Error(
-    "Refusing to start without HTTP auth. Enable OAuth, set RECEPIO_MCP_HTTP_BEARER_TOKEN for direct clients, or use RECEPIO_MCP_DEV_NOAUTH=1 for explicit local development only.",
+    "Refusing to start without HTTP auth. Enable OAuth, set UNIFIED_MCP_HTTP_BEARER_TOKEN for direct clients, or use UNIFIED_MCP_DEV_NOAUTH=1 for explicit local development only.",
   );
 }
 
@@ -155,7 +155,7 @@ const httpServer = createServer(async (req, res) => {
 
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(
-      JSON.stringify({ service: "recepio-mcp", version: "0.1.0", status: "ok", oauth: oauthOn }),
+      JSON.stringify({ service: "unified-mcp-gateway", version: "0.1.0", status: "ok", oauth: oauthOn }),
     );
     return;
   }
@@ -167,7 +167,7 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  const corsOrigin = process.env.RECEPIO_MCP_CORS_ORIGIN;
+  const corsOrigin = process.env.UNIFIED_MCP_CORS_ORIGIN;
   if (req.method === "OPTIONS") {
     if (!corsOrigin || req.headers.origin !== corsOrigin) {
       res.writeHead(403).end("CORS origin not allowed");
@@ -217,7 +217,7 @@ const httpServer = createServer(async (req, res) => {
     res.setHeader("Vary", "Origin");
   }
 
-  const server = createRecepioServer(auth, privateClient);
+  const server = createUnifiedServer(auth, privateClient);
   const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
   res.on("close", () => {
     void transport.close();
@@ -228,11 +228,11 @@ const httpServer = createServer(async (req, res) => {
     await server.connect(transport as Transport);
     await transport.handleRequest(req, res);
   } catch (error) {
-    console.error("recepio-mcp request failed", error instanceof Error ? error.message : "unknown error");
+    console.error("unified-mcp-gateway request failed", error instanceof Error ? error.message : "unknown error");
     if (!res.headersSent) res.writeHead(500).end("Internal server error");
   }
 });
 
 httpServer.listen(port, host, () => {
-  console.log(`Recepio MCP listening on http://${host}:${port}${MCP_PATH}`);
+  console.log(`Unified MCP Gateway listening on http://${host}:${port}${MCP_PATH}`);
 });

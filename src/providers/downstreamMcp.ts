@@ -33,9 +33,6 @@ function riskFromAnnotations(
   const override = overrides?.[toolName];
   if (override) return override;
   if (annotations?.destructiveHint === true) return "DESTRUCTIVE";
-  // MCP annotations are model hints, not an authorization boundary. Unknown
-  // downstream tools therefore never become READ solely because a child
-  // server claims readOnlyHint=true; operators must explicitly override risk.
   return "HIGH_RISK";
 }
 
@@ -53,7 +50,7 @@ export class DownstreamMcpProvider implements Provider {
   }
 
   private async withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
-    const client = new Client({ name: `recepio-mcp-${this.id}`, version: "0.1.0" });
+    const client = new Client({ name: `unified-mcp-${this.id}`, version: "0.1.0" });
     const transport = new StreamableHTTPClientTransport(
       this.url,
       this.config.token
@@ -61,9 +58,6 @@ export class DownstreamMcpProvider implements Provider {
         : {},
     );
     try {
-      // SDK v1.30's concrete StreamableHTTP transport types expose optional
-      // callback fields more narrowly than the shared Transport interface when
-      // exactOptionalPropertyTypes is enabled. Runtime shapes are compatible.
       await client.connect(transport as Transport);
       return await fn(client);
     } finally {

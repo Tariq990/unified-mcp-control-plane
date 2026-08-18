@@ -13,17 +13,17 @@ interface DownstreamEnvEntry {
 }
 
 function parseAllowedHosts(env: NodeJS.ProcessEnv): string[] {
-  return (env.RECEPIO_MCP_DOWNSTREAM_ALLOWED_HOSTS ?? "")
+  return (env.UNIFIED_MCP_DOWNSTREAM_ALLOWED_HOSTS ?? "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function parseDownstreams(env: NodeJS.ProcessEnv): DownstreamEnvEntry[] {
-  const raw = env.RECEPIO_MCP_DOWNSTREAM_JSON;
+  const raw = env.UNIFIED_MCP_DOWNSTREAM_JSON;
   if (!raw) return [];
   const parsed = JSON.parse(raw) as unknown;
-  if (!Array.isArray(parsed)) throw new Error("RECEPIO_MCP_DOWNSTREAM_JSON must be a JSON array");
+  if (!Array.isArray(parsed)) throw new Error("UNIFIED_MCP_DOWNSTREAM_JSON must be a JSON array");
   return parsed.map((value) => {
     if (!value || typeof value !== "object") throw new Error("downstream entry must be an object");
     const entry = value as Record<string, unknown>;
@@ -62,22 +62,18 @@ function parseDownstreams(env: NodeJS.ProcessEnv): DownstreamEnvEntry[] {
 }
 
 export function providersFromEnv(env: NodeJS.ProcessEnv = process.env): Provider[] {
-  const repositories = parseRepositoryAllowlist(env.RECEPIO_MCP_GITHUB_REPOSITORIES);
-  const controlRepository = env.RECEPIO_MCP_GITHUB_CONTROL_REPOSITORY ?? "Tariq990/recepio-app-v2";
-  const githubToken = env.RECEPIO_MCP_GITHUB_TOKEN;
+  const repositories = parseRepositoryAllowlist(env.UNIFIED_MCP_GITHUB_REPOSITORIES);
+  const githubToken = env.UNIFIED_MCP_GITHUB_TOKEN;
   const providers: Provider[] = [
     new GitHubProvider({
       ...(githubToken ? { token: githubToken } : {}),
       repositories,
-      controlRepository,
-      controlBranch: env.RECEPIO_MCP_GITHUB_CONTROL_BRANCH ?? "ops/github-control",
-      controlPath: env.RECEPIO_MCP_GITHUB_CONTROL_PATH ?? ".recepio/github-control-request.json",
     }),
     new MetaProvider({
-      ...(env.RECEPIO_MCP_META_TOKEN ? { token: env.RECEPIO_MCP_META_TOKEN } : {}),
-      ...(env.RECEPIO_MCP_META_GRAPH_VERSION ? { graphVersion: env.RECEPIO_MCP_META_GRAPH_VERSION } : {}),
-      ...(env.RECEPIO_MCP_META_APP_ID ? { appId: env.RECEPIO_MCP_META_APP_ID } : {}),
-      ...(env.RECEPIO_MCP_META_WABA_ID ? { wabaId: env.RECEPIO_MCP_META_WABA_ID } : {}),
+      ...(env.UNIFIED_MCP_META_TOKEN ? { token: env.UNIFIED_MCP_META_TOKEN } : {}),
+      ...(env.UNIFIED_MCP_META_GRAPH_VERSION ? { graphVersion: env.UNIFIED_MCP_META_GRAPH_VERSION } : {}),
+      ...(env.UNIFIED_MCP_META_APP_ID ? { appId: env.UNIFIED_MCP_META_APP_ID } : {}),
+      ...(env.UNIFIED_MCP_META_WABA_ID ? { wabaId: env.UNIFIED_MCP_META_WABA_ID } : {}),
     }),
   ];
 

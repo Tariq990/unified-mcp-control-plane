@@ -51,7 +51,7 @@ export class MetaProvider implements Provider {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
-        "User-Agent": "recepio-mcp/0.1",
+        "User-Agent": "unified-mcp-gateway/0.1",
       },
       signal: AbortSignal.timeout(20_000),
     });
