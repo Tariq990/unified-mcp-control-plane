@@ -17,10 +17,10 @@ export class PolicyError extends Error {
 export function policyFromEnv(env: NodeJS.ProcessEnv = process.env): PolicyConfig {
   const enabled = (name: string) => env[name] === "1";
   return {
-    allowWrite: enabled("RECEPIO_MCP_ALLOW_WRITE"),
-    allowHighRisk: enabled("RECEPIO_MCP_ALLOW_HIGH_RISK"),
-    allowDestructive: enabled("RECEPIO_MCP_ALLOW_DESTRUCTIVE"),
-    allowProduction: enabled("RECEPIO_MCP_ALLOW_PRODUCTION"),
+    allowWrite: enabled("UNIFIED_MCP_ALLOW_WRITE"),
+    allowHighRisk: enabled("UNIFIED_MCP_ALLOW_HIGH_RISK"),
+    allowDestructive: enabled("UNIFIED_MCP_ALLOW_DESTRUCTIVE"),
+    allowProduction: enabled("UNIFIED_MCP_ALLOW_PRODUCTION"),
   };
 }
 
