@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertExpectedRisk, assertRiskAllowed, PolicyError } from "../src/policy.js";
+import {
+  assertExpectedRisk,
+  assertRiskAllowed,
+  policyFromEnv,
+  PolicyError,
+} from "../src/policy.js";
 
 const denyAll = {
   allowWrite: false,
@@ -15,6 +20,24 @@ test("READ is always allowed", () => {
 
 test("WRITE is fail-closed", () => {
   assert.throws(() => assertRiskAllowed("WRITE", denyAll), PolicyError);
+});
+
+test("unified policy environment stays fail-closed unless explicitly enabled", () => {
+  assert.deepEqual(policyFromEnv({}), denyAll);
+  assert.deepEqual(
+    policyFromEnv({
+      UNIFIED_MCP_ALLOW_WRITE: "1",
+      UNIFIED_MCP_ALLOW_HIGH_RISK: "1",
+      UNIFIED_MCP_ALLOW_DESTRUCTIVE: "1",
+      UNIFIED_MCP_ALLOW_PRODUCTION: "1",
+    }),
+    {
+      allowWrite: true,
+      allowHighRisk: true,
+      allowDestructive: true,
+      allowProduction: true,
+    },
+  );
 });
 
 test("consequential execution requires exact expected risk", () => {
