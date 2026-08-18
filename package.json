@@ -1,0 +1,25 @@
+{
+  "name": "unified-mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/server.js",
+    "dev": "tsx src/server.ts",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "check": "npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  }
+}
