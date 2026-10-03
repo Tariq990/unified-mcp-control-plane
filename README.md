@@ -219,14 +219,33 @@ cloudflare/               Cloudflare Workers implementation and config
 .github/workflows/        verification/deployment workflow definitions
 ```
 
-## Local development
+## Getting started
+
+### Prerequisites
+
+- Git
+- Node.js 20.11 or newer
+- npm
+
+Clone the repository, install the locked dependencies, and create a local environment file:
 
 ```bash
+git clone https://github.com/Tariq990/unified-mcp-control-plane.git
+cd unified-mcp-control-plane
 npm ci
 cp .env.example .env
+```
+
+On Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
+
+For the simplest local evaluation, set `UNIFIED_MCP_DEV_NOAUTH=1` in `.env`, then run:
+
+```bash
 npm run check
 npm start
 ```
+
+## Local development
 
 For a local MCP Inspector session without OAuth:
 
